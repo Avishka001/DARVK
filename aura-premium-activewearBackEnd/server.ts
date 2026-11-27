@@ -12,14 +12,19 @@ import { sendInvoiceEmail, verifyEmailConfigOnStartup, sendPasswordResetEmail } 
 dotenv.config();
 
 const app = express();
+app.set('trust proxy', 1);
 const PORT = process.env.PORT || 4000;
 
 // Security Hardening
 app.use(helmet()); // Sets robust HTTP security headers
 
 // Strict CORS to only allow our frontend domain
+const allowedOrigins = [
+  process.env.FRONTEND_URL || 'http://localhost:3000',
+  ...(process.env.VERCEL_URL ? [`https://${process.env.VERCEL_URL}`] : []),
+];
 app.use(cors({
-  origin: process.env.FRONTEND_URL || 'http://localhost:3000',
+  origin: allowedOrigins,
   credentials: true
 }));
 
@@ -1134,12 +1139,16 @@ app.post('/api/auth/reset-password', async (req: Request, res: Response) => {
   }
 });
 
-// Start Express Server
-app.listen(PORT, () => {
-  console.log(`==================================================`);
-  console.log(`  DARVK NEON POSTGRES BACKEND RUNNING  `);
-  console.log(`  URL: http://localhost:${PORT}                      `);
-  console.log(`==================================================`);
+// Start Express Server locally (Vercel invokes the exported app directly)
+if (!process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`==================================================`);
+    console.log(`  DARVK NEON POSTGRES BACKEND RUNNING  `);
+    console.log(`  URL: http://localhost:${PORT}                      `);
+    console.log(`==================================================`);
 
-  verifyEmailConfigOnStartup();
-});
+    verifyEmailConfigOnStartup();
+  });
+}
+
+export default app;
