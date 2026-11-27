@@ -1,4 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
+import { upload } from '@vercel/blob/client';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   X, Plus, Trash2, Package, Tag, Layers, DollarSign, Image as ImageIcon,
@@ -133,6 +134,7 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   const [formImages, setFormImages] = useState<string[]>([]);
   const [formImageUrl, setFormImageUrl] = useState('');
   const [formErrors, setFormErrors] = useState<Record<string, string>>({});
+  const [isUploadingImages, setIsUploadingImages] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const showSuccess = (msg: string) => {
@@ -141,17 +143,37 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
   };
 
   // ── Image handling ──────────────────────────────────────────
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = Array.from(e.target.files || []);
-    files.forEach((file) => {
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        if (ev.target?.result) {
-          setFormImages((prev) => [...prev, ev.target!.result as string]);
-        }
-      };
-      reader.readAsDataURL(file);
+    if (files.length === 0) return;
+
+    setIsUploadingImages(true);
+    setFormErrors((prev) => {
+      const { images: _ignored, ...rest } = prev;
+      return rest;
     });
+
+    const token = localStorage.getItem('aura_user_token');
+    try {
+      const uploadedUrls: string[] = [];
+      for (const file of files) {
+        const blob = await upload(`products/${file.name}`, file, {
+          access: 'private',
+          handleUploadUrl: '/api/blob/upload',
+          headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+        });
+        uploadedUrls.push(`/api/blob/image?url=${encodeURIComponent(blob.url)}`);
+      }
+      setFormImages((prev) => [...prev, ...uploadedUrls]);
+    } catch (err: any) {
+      setFormErrors((prev) => ({
+        ...prev,
+        images: err?.message || 'Image upload to Vercel Blob failed',
+      }));
+    } finally {
+      setIsUploadingImages(false);
+      e.target.value = '';
+    }
   };
 
   const handleAddImageUrl = () => {
@@ -862,12 +884,12 @@ export default function AdminDashboard({ onClose }: AdminDashboardProps) {
 
                   {/* Upload from device */}
                   <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="border-2 border-dashed border-white/10 hover:border-red-600/40 rounded-xl p-8 flex flex-col items-center justify-center cursor-pointer transition-all group"
+                    onClick={() => !isUploadingImages && fileInputRef.current?.click()}
+                    className={`border-2 border-dashed border-white/10 hover:border-red-600/40 rounded-xl p-8 flex flex-col items-center justify-center transition-all group ${isUploadingImages ? 'opacity-60 cursor-wait' : 'cursor-pointer'}`}
                   >
                     <Upload className="w-8 h-8 text-neutral-600 group-hover:text-red-500 transition-colors mb-2" />
                     <p className="text-xs font-bold text-neutral-500 tracking-widest uppercase group-hover:text-white transition-colors">
-                      Click to upload images
+                      {isUploadingImages ? 'Uploading to Vercel Blob...' : 'Click to upload images'}
                     </p>
                     <p className="text-[10px] text-neutral-600 mt-1 font-mono">JPG, PNG, WEBP supported</p>
                     <input

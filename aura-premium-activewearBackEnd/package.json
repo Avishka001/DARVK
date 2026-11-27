@@ -6,11 +6,13 @@
   "scripts": {
     "dev": "tsx server.ts",
     "setup": "tsx setup-db.ts",
+    "migrate:blob": "tsx migrate-images-to-blob.ts",
     "build": "tsc",
     "clean": "rm -rf dist"
   },
   "dependencies": {
     "@types/pg": "8.23.1",
+    "@vercel/blob": "^2.9.0",
     "bcrypt": "^6.0.0",
     "cors": "^2.8.5",
     "dotenv": "^17.2.3",

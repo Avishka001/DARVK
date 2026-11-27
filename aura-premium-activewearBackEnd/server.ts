@@ -5,6 +5,8 @@ import bcrypt from 'bcrypt';
 import jwt from 'jsonwebtoken';
 import helmet from 'helmet';
 import rateLimit from 'express-rate-limit';
+import { get } from '@vercel/blob';
+import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 import { query } from './db.js';
 import { ensureTables } from './schema.js';
 import { sendInvoiceEmail, verifyEmailConfigOnStartup, sendPasswordResetEmail } from './emailService.js';
@@ -218,6 +220,70 @@ app.get('/api/products/:id', async (req: Request, res: Response) => {
   } catch (err: any) {
     console.error('Error fetching product:', err);
     res.status(500).json({ error: 'Database query failed' });
+  }
+});
+
+// GET /api/blob/image?url=... (Stream private Vercel Blob images to the storefront)
+app.get('/api/blob/image', async (req: Request, res: Response) => {
+  try {
+    const target = String(req.query.url || req.query.pathname || '');
+    if (!target) {
+      return res.status(400).json({ error: 'Missing url or pathname' });
+    }
+    const result = await get(target, { access: 'private' });
+    if (!result || result.statusCode !== 200 || !result.stream) {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    res.setHeader('Content-Type', result.blob.contentType || 'image/jpeg');
+    res.setHeader('Cache-Control', 'public, max-age=31536000, immutable');
+    const reader = result.stream.getReader();
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      res.write(value);
+    }
+    res.end();
+  } catch (err: any) {
+    if (err?.name === 'BlobNotFoundError') {
+      return res.status(404).json({ error: 'Image not found' });
+    }
+    console.error('Blob image proxy error:', err);
+    return res.status(500).json({ error: 'Failed to load image' });
+  }
+});
+
+// POST /api/blob/upload (Vercel Blob client upload token + webhook)
+app.post('/api/blob/upload', async (req: Request, res: Response) => {
+  const body = req.body as HandleUploadBody;
+  try {
+    const jsonResponse = await handleUpload({
+      body,
+      request: req,
+      onBeforeGenerateToken: async () => {
+        const authHeader = req.headers.authorization;
+        if (!authHeader || !authHeader.startsWith('Bearer ')) {
+          throw new Error('Unauthorized: Admin login required');
+        }
+        const token = authHeader.split(' ')[1];
+        const decoded = jwt.verify(token, JWT_SECRET) as { id: number; email: string; role: number };
+        if (decoded.role !== 1) {
+          throw new Error('Forbidden: Admin access required');
+        }
+
+        return {
+          allowedContentTypes: ['image/jpeg', 'image/png', 'image/webp', 'image/gif', 'image/avif'],
+          addRandomSuffix: true,
+        };
+      },
+      onUploadCompleted: async () => {
+        // Blob URL is returned directly to the client and saved with the product
+      },
+    });
+
+    return res.status(200).json(jsonResponse);
+  } catch (err: any) {
+    const status = err.message?.includes('Unauthorized') ? 401 : err.message?.includes('Forbidden') ? 403 : 400;
+    return res.status(status).json({ error: err.message || 'Blob upload failed' });
   }
 });
 
