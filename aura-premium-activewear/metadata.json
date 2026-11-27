@@ -1,0 +1,6 @@
+{
+  "name": "AURA Premium Activewear",
+  "description": "A high-end, high-performance athletic clothing e-commerce storefront featuring an immersive video hero, fluid catalog filters, quick-add sliding cart, and a secure payment checkout gateway.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
